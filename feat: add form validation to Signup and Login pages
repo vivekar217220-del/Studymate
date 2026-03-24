@@ -1,0 +1,323 @@
+src/pages/Login.jsx :-
+
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+export default function Login() {
+  const navigate  = useNavigate()
+  const [email, setEmail]     = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError]     = useState('')
+  const [loading, setLoading] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState({})   // ✅ NEW
+
+  // ✅ NEW - Validation function
+  const validate = () => {
+    const errors = {}
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+    if (!email.trim())              errors.email = 'Email is required'
+    else if (!emailRegex.test(email)) errors.email = 'Enter a valid email address'
+
+    if (!password)                  errors.password = 'Password is required'
+    else if (password.length < 8)   errors.password = 'Password must be at least 8 characters'
+
+    return errors
+  }
+
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    // ✅ NEW - Run validation first
+    const errors = validate()
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      return
+    }
+    setFieldErrors({})
+
+    setLoading(true)
+    try {
+      const { signIn } = await import('aws-amplify/auth')
+      await signIn({ username: email, password })
+      navigate('/dashboard')
+    } catch (err) {
+      setError(err.message)
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center px-4">
+      <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 w-full max-w-md border border-white/20 shadow-2xl">
+
+        <div className="text-center mb-8">
+          <div className="text-4xl mb-2">🔐</div>
+          <h2 className="text-3xl font-bold text-white">Welcome Back</h2>
+          <p className="text-white/50 mt-1">Login to your account</p>
+        </div>
+
+        {error && (
+          <div className="bg-red-500/20 border border-red-500/50 text-red-300 rounded-xl p-3 mb-4 text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4" noValidate>
+          <div>
+            <label className="text-white/70 text-sm mb-1 block">Email Address</label>
+            <input
+              type="email"
+              placeholder="you@email.com"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                setFieldErrors(prev => ({ ...prev, email: '' }))  // ✅ NEW - clear error on type
+              }}
+              required
+              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
+                fieldErrors.email
+                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
+              }`}
+            />
+            {/* ✅ NEW - show error */}
+            {fieldErrors.email && (
+              <p className="text-red-400 text-xs mt-1">{fieldErrors.email}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-white/70 text-sm mb-1 block">Password</label>
+            <input
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setFieldErrors(prev => ({ ...prev, password: '' }))  // ✅ NEW - clear error on type
+              }}
+              required
+              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
+                fieldErrors.password
+                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
+              }`}
+            />
+            {/* ✅ NEW - show error */}
+            {fieldErrors.password && (
+              <p className="text-red-400 text-xs mt-1">{fieldErrors.password}</p>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold py-3 rounded-xl transition-all duration-200 disabled:opacity-50">
+            {loading ? 'Logging in...' : 'Login →'}
+          </button>
+        </form>
+
+        <p className="text-white/40 text-center mt-6 text-sm">
+          No account?{' '}
+          <span onClick={() => navigate('/signup')} className="text-purple-400 hover:text-purple-300 cursor-pointer">
+            Sign Up
+          </span>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+
+src/pages/Signup.jsx :- 
+
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+export default function Signup() {
+  const navigate = useNavigate()
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' })
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState({})   // ✅ NEW
+
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value })
+    setFieldErrors(prev => ({ ...prev, [e.target.name]: '' }))  // ✅ NEW - clear error on type
+  }
+
+  // ✅ NEW - Validation function
+  const validate = () => {
+    const errors = {}
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const phoneRegex = /^\+91[6-9]\d{9}$/
+
+    if (!form.name.trim())             errors.name = 'Full name is required'
+    else if (form.name.trim().length < 3) errors.name = 'Name must be at least 3 characters'
+
+    if (!form.email.trim())            errors.email = 'Email is required'
+    else if (!emailRegex.test(form.email)) errors.email = 'Enter a valid email address'
+
+    if (!form.phone.trim())            errors.phone = 'Phone number is required'
+    else if (!phoneRegex.test(form.phone)) errors.phone = 'Use format: +91 9876543210'
+
+    if (!form.password)                errors.password = 'Password is required'
+    else if (form.password.length < 8) errors.password = 'Password must be at least 8 characters'
+    else if (!/[A-Z]/.test(form.password)) errors.password = 'Must contain at least one uppercase letter'
+    else if (!/[0-9]/.test(form.password)) errors.password = 'Must contain at least one number'
+
+    return errors
+  }
+
+  const handleSignup = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    // ✅ NEW - Run validation first
+    const errors = validate()
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      return
+    }
+    setFieldErrors({})
+
+    setLoading(true)
+    try {
+      const { signUp } = await import('aws-amplify/auth')
+      await signUp({
+        username: form.email,
+        password: form.password,
+        options: {
+          userAttributes: {
+            email: form.email,
+            phone_number: form.phone,
+            name: form.name,
+          }
+        }
+      })
+      navigate('/verify', { state: { email: form.email } })
+    } catch (err) {
+      setError(err.message)
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center px-4">
+      <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 w-full max-w-md border border-white/20 shadow-2xl">
+
+        <div className="text-center mb-8">
+          <div className="text-4xl mb-2">👤</div>
+          <h2 className="text-3xl font-bold text-white">Create Account</h2>
+          <p className="text-white/50 mt-1">Join StudyMate today</p>
+        </div>
+
+        {error && (
+          <div className="bg-red-500/20 border border-red-500/50 text-red-300 rounded-xl p-3 mb-4 text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSignup} className="space-y-4" noValidate>
+          <div>
+            <label className="text-white/70 text-sm mb-1 block">Full Name</label>
+            <input
+              name="name"
+              type="text"
+              placeholder="John Doe"
+              onChange={handleChange}
+              required
+              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
+                fieldErrors.name
+                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
+              }`}
+            />
+            {fieldErrors.name && (
+              <p className="text-red-400 text-xs mt-1">{fieldErrors.name}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-white/70 text-sm mb-1 block">Email Address</label>
+            <input
+              name="email"
+              type="email"
+              placeholder="you@email.com"
+              onChange={handleChange}
+              required
+              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
+                fieldErrors.email
+                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
+              }`}
+            />
+            {fieldErrors.email && (
+              <p className="text-red-400 text-xs mt-1">{fieldErrors.email}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-white/70 text-sm mb-1 block">Phone Number</label>
+            <input
+              name="phone"
+              type="tel"
+              placeholder="+91 9876543210"
+              onChange={handleChange}
+              required
+              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
+                fieldErrors.phone
+                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
+              }`}
+            />
+            {fieldErrors.phone && (
+              <p className="text-red-400 text-xs mt-1">{fieldErrors.phone}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-white/70 text-sm mb-1 block">Password</label>
+            <input
+              name="password"
+              type="password"
+              placeholder="Min 8 characters"
+              onChange={handleChange}
+              required
+              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
+                fieldErrors.password
+                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
+              }`}
+            />
+            {fieldErrors.password && (
+              <p className="text-red-400 text-xs mt-1">{fieldErrors.password}</p>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold py-3 rounded-xl transition-all duration-200 mt-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            {loading ? 'Creating Account...' : 'Sign Up →'}
+          </button>
+        </form>
+
+        <p className="text-white/40 text-center mt-6 text-sm">
+          Already have an account?{' '}
+          <span onClick={() => navigate('/login')} className="text-purple-400 hover:text-purple-300 cursor-pointer">
+            Login
+          </span>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+
+🔧 Git Commands
+git add src/pages/Login.jsx src/pages/Signup.jsx
+git commit -m "feat: add form validation to Signup and Login pages"
+git push origin main
