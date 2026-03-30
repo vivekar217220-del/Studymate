@@ -1,0 +1,57 @@
+config: setup Tailwind CSS and postcss configuration :-
+
+Step-by-steps :-
+
+1. Install Tailwind CSS
+
+Run this in your project:
+
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+
+2. Configure tailwind.config.js
+
+Replace content with:
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+
+3. Update index.css (or src/index.css)
+
+Remove everything and add:
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+4. Clean App.jsx for Testing Tailwind
+function App() {
+  return (
+    <div className="flex items-center justify-center h-screen bg-gray-100">
+      <h1 className="text-4xl font-bold text-blue-600">
+        StudyMate 🚀 Tailwind Working
+      </h1>
+    </div>
+  );
+}
+
+export default App;
+
+5. Run Project
+npm run dev
+
+
+📁 Files You Will Commit
+tailwind.config.js
+postcss.config.js
+src/index.css
+src/App.jsx 
