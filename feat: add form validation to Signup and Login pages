@@ -2,6 +2,7 @@ src/pages/Login.jsx :-
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { getCurrentUser } from 'aws-amplify/auth'
 
 export default function Login() {
   const navigate  = useNavigate()
@@ -9,44 +10,27 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError]     = useState('')
   const [loading, setLoading] = useState(false)
-  const [fieldErrors, setFieldErrors] = useState({})   // ✅ NEW
-
-  // ✅ NEW - Validation function
-  const validate = () => {
-    const errors = {}
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-    if (!email.trim())              errors.email = 'Email is required'
-    else if (!emailRegex.test(email)) errors.email = 'Enter a valid email address'
-
-    if (!password)                  errors.password = 'Password is required'
-    else if (password.length < 8)   errors.password = 'Password must be at least 8 characters'
-
-    return errors
-  }
 
   const handleLogin = async (e) => {
-    e.preventDefault()
-    setError('')
+  e.preventDefault()
+  setLoading(true)
+  setError('')
 
-    // ✅ NEW - Run validation first
-    const errors = validate()
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors)
-      return
-    }
-    setFieldErrors({})
+  try {
+    const { signIn, signOut } = await import('aws-amplify/auth')
 
-    setLoading(true)
-    try {
-      const { signIn } = await import('aws-amplify/auth')
-      await signIn({ username: email, password })
-      navigate('/dashboard')
-    } catch (err) {
-      setError(err.message)
-    }
-    setLoading(false)
+    // 🔥 ADD THIS LINE
+    await signOut()
+
+    await signIn({ username: email, password })
+    navigate('/dashboard')
+
+  } catch (err) {
+    setError(err.message)
   }
+
+  setLoading(false)
+}
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center px-4">
@@ -64,28 +48,17 @@ export default function Login() {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4" noValidate>
+        <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="text-white/70 text-sm mb-1 block">Email Address</label>
             <input
               type="email"
               placeholder="you@email.com"
               value={email}
-              onChange={(e) => {
-                setEmail(e.target.value)
-                setFieldErrors(prev => ({ ...prev, email: '' }))  // ✅ NEW - clear error on type
-              }}
+              onChange={(e) => setEmail(e.target.value)}
               required
-              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
-                fieldErrors.email
-                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
-                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
-              }`}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
             />
-            {/* ✅ NEW - show error */}
-            {fieldErrors.email && (
-              <p className="text-red-400 text-xs mt-1">{fieldErrors.email}</p>
-            )}
           </div>
 
           <div>
@@ -94,21 +67,10 @@ export default function Login() {
               type="password"
               placeholder="Enter your password"
               value={password}
-              onChange={(e) => {
-                setPassword(e.target.value)
-                setFieldErrors(prev => ({ ...prev, password: '' }))  // ✅ NEW - clear error on type
-              }}
+              onChange={(e) => setPassword(e.target.value)}
               required
-              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
-                fieldErrors.password
-                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
-                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
-              }`}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
             />
-            {/* ✅ NEW - show error */}
-            {fieldErrors.password && (
-              <p className="text-red-400 text-xs mt-1">{fieldErrors.password}</p>
-            )}
           </div>
 
           <button
@@ -141,49 +103,15 @@ export default function Signup() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [fieldErrors, setFieldErrors] = useState({})   // ✅ NEW
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value })
-    setFieldErrors(prev => ({ ...prev, [e.target.name]: '' }))  // ✅ NEW - clear error on type
-  }
-
-  // ✅ NEW - Validation function
-  const validate = () => {
-    const errors = {}
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    const phoneRegex = /^\+91[6-9]\d{9}$/
-
-    if (!form.name.trim())             errors.name = 'Full name is required'
-    else if (form.name.trim().length < 3) errors.name = 'Name must be at least 3 characters'
-
-    if (!form.email.trim())            errors.email = 'Email is required'
-    else if (!emailRegex.test(form.email)) errors.email = 'Enter a valid email address'
-
-    if (!form.phone.trim())            errors.phone = 'Phone number is required'
-    else if (!phoneRegex.test(form.phone)) errors.phone = 'Use format: +91 9876543210'
-
-    if (!form.password)                errors.password = 'Password is required'
-    else if (form.password.length < 8) errors.password = 'Password must be at least 8 characters'
-    else if (!/[A-Z]/.test(form.password)) errors.password = 'Must contain at least one uppercase letter'
-    else if (!/[0-9]/.test(form.password)) errors.password = 'Must contain at least one number'
-
-    return errors
   }
 
   const handleSignup = async (e) => {
     e.preventDefault()
-    setError('')
-
-    // ✅ NEW - Run validation first
-    const errors = validate()
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors)
-      return
-    }
-    setFieldErrors({})
-
     setLoading(true)
+    setError('')
     try {
       const { signUp } = await import('aws-amplify/auth')
       await signUp({
@@ -220,7 +148,7 @@ export default function Signup() {
           </div>
         )}
 
-        <form onSubmit={handleSignup} className="space-y-4" noValidate>
+        <form onSubmit={handleSignup} className="space-y-4">
           <div>
             <label className="text-white/70 text-sm mb-1 block">Full Name</label>
             <input
@@ -229,15 +157,8 @@ export default function Signup() {
               placeholder="John Doe"
               onChange={handleChange}
               required
-              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
-                fieldErrors.name
-                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
-                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
-              }`}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
             />
-            {fieldErrors.name && (
-              <p className="text-red-400 text-xs mt-1">{fieldErrors.name}</p>
-            )}
           </div>
 
           <div>
@@ -248,15 +169,8 @@ export default function Signup() {
               placeholder="you@email.com"
               onChange={handleChange}
               required
-              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
-                fieldErrors.email
-                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
-                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
-              }`}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
             />
-            {fieldErrors.email && (
-              <p className="text-red-400 text-xs mt-1">{fieldErrors.email}</p>
-            )}
           </div>
 
           <div>
@@ -267,15 +181,8 @@ export default function Signup() {
               placeholder="+91 9876543210"
               onChange={handleChange}
               required
-              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
-                fieldErrors.phone
-                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
-                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
-              }`}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
             />
-            {fieldErrors.phone && (
-              <p className="text-red-400 text-xs mt-1">{fieldErrors.phone}</p>
-            )}
           </div>
 
           <div>
@@ -286,15 +193,8 @@ export default function Signup() {
               placeholder="Min 8 characters"
               onChange={handleChange}
               required
-              className={`w-full bg-white/10 border rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-1 transition-all ${
-                fieldErrors.password
-                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
-                  : 'border-white/20 focus:border-purple-400 focus:ring-purple-400'
-              }`}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
             />
-            {fieldErrors.password && (
-              <p className="text-red-400 text-xs mt-1">{fieldErrors.password}</p>
-            )}
           </div>
 
           <button
