@@ -11,8 +11,6 @@ npx tailwindcss init -p
 
 2. Configure tailwind.config.js
 
-Replace content with:
-
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -46,11 +44,12 @@ function App() {
 
 export default App;
 
-5. Run Project
+5. Run Project :- 
+
 npm run dev
 
 
-📁 Files You Will Commit
+📁 Files That I Will Commits :- 
 tailwind.config.js
 postcss.config.js
 src/index.css
