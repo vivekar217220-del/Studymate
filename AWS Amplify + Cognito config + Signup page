@@ -1,0 +1,61 @@
+Install aws-amplify, configure Cognito userPool + identityPool + S3, build Signup form with validation.
+
+FILES :- 
+
+
+src/aws/config.js src/pages/Signup.jsx
+GIT COMMITS
+git commit -m "feat: configure aws amplify and cognito"
+git commit -m "feat: add signup page with form validation"
+
+
+CODE : -
+// src/aws/config.js
+import { Amplify } from 'aws-amplify'
+Amplify.configure({
+Auth: {
+Cognito: {
+userPoolId: 'ap-south-1_cIGyv4gm9',
+userPoolClientId: '7eq5cbb5pqs31nimpn8qp6imfv',
+identityPoolId: 'ap-south-1:b7c9958b-5c41-4d28-9f7f-b8511ec02de7',
+}
+},
+Storage: {
+S3: {
+bucket: 'my-web-page-pdf-storage',
+region: 'ap-south-1',
+}
+}
+})
+
+
+// src/pages/Signup.jsx (key parts)
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+export default function Signup() {
+const navigate = useNavigate()
+const [form, setForm] = useState(
+{ name: '', email: '', phone: '', password: '' }
+)
+const [error, setError] = useState('')
+const [loading, setLoading] = useState(false)
+const handleSignup = async (e) => {
+e.preventDefault()
+setLoading(true)
+try {
+const { signUp } = await import('aws-amplify/auth')
+await signUp({
+username: form.email,
+password: form.password,
+options: { userAttributes: {
+email: form.email,
+phone_number: form.phone,
+name: form.name,
+}}
+})
+navigate('/verify', { state: { email: form.email } })
+} catch (err) { setError(err.message) }
+setLoading(false)
+}
+// ... form JSX with name/email/phone/password inputs
+}
