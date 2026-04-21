@@ -132,17 +132,29 @@ src/
 
 🔑 Environment Variables
 Backend .env
+
 GROQ_API_KEY=...
+
 PORT=5000
+
 AWS_REGION=ap-south-1
+
 AWS_ACCESS_KEY_ID=...
+
 AWS_SECRET_ACCESS_KEY=...
+
 Frontend .env
+
 VITE_USER_POOL_ID=...
+
 VITE_USER_POOL_CLIENT_ID=...
+
 VITE_IDENTITY_POOL_ID=...
+
 VITE_S3_BUCKET=...
+
 VITE_S3_REGION=...
+
 VITE_GROQ_API_KEY=...
 
 🚀 Running Locally
