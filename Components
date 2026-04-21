@@ -1,0 +1,1839 @@
+AnalyticsDashboard.jsx :- 
+import { useEffect } from 'react'
+import { useStreak, useSessions, useQuizScores } from '../hooks/useStudyTracker'
+
+// ── Mini bar chart for last 7 days ────────────────────────────────────────────
+function WeekChart({ data }) {
+    const maxMins = Math.max(...data.map(d => d.mins), 1)
+    return (
+        <div className="flex items-end gap-2 h-24">
+            {data.map((d, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                    <div className="w-full relative flex items-end justify-center" style={{ height: '70px' }}>
+                        <div
+                            className={`w-full rounded-sm transition-all duration-500 ${d.mins > 0 ? 'bg-slate-800' : 'bg-slate-100'
+                                }`}
+                            style={{ height: `${Math.max((d.mins / maxMins) * 70, d.mins > 0 ? 4 : 2)}px` }}
+                            title={`${d.mins} min`}
+                        />
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{d.label}</span>
+                </div>
+            ))}
+        </div>
+    )
+}
+
+// ── Streak card ─────────────────────────────────────────────────────────
+function StreakCard({ streak }) {
+    const isActiveToday = streak.lastDate === new Date().toISOString().slice(0, 10)
+    return (
+        <div className="rounded-lg p-5 border bg-white border-slate-200 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">Study Streak</span>
+                <span className="text-lg opacity-80">{isActiveToday ? '🔥' : '⏸️'}</span>
+            </div>
+            <p className="text-3xl font-semibold tracking-tight text-slate-900">
+                {streak.count}<span className="text-sm font-normal text-slate-500 ml-1.5">days</span>
+            </p>
+            <p className="text-xs text-slate-500">
+                {isActiveToday ? 'Active today' : 'Open a subject to continue'}
+            </p>
+            {streak.longestStreak > 0 && (
+                <p className="text-xs text-slate-600 font-medium mt-1">Best: <span className="text-slate-900">{streak.longestStreak} days</span></p>
+            )}
+        </div>
+    )
+}
+
+// ── Stat card ─────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, icon }) {
+    return (
+        <div className="rounded-lg p-5 border bg-white border-slate-200 flex flex-col gap-2">
+            <div className="flex items-start justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</span>
+                <span className="text-lg opacity-80">{icon}</span>
+            </div>
+            <p className="text-3xl font-semibold tracking-tight text-slate-900">{value}</p>
+            <p className="text-xs text-slate-500">{sub}</p>
+        </div>
+    )
+}
+
+// ── Subject performance row ───────────────────────────────────────────────────
+function SubjectRow({ subjectName, entries }) {
+    const avgPct = Math.round(entries.reduce((a, e) => a + e.pct, 0) / entries.length)
+    const best = Math.max(...entries.map(e => e.pct))
+    const attempts = entries.length
+    
+    // Sober colors mapping
+    const barColor = avgPct >= 80 ? 'bg-slate-800' : avgPct >= 60 ? 'bg-slate-500' : 'bg-slate-300'
+
+    return (
+        <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+                <div>
+                    <p className="text-slate-900 text-sm font-medium">{subjectName}</p>
+                    <p className="text-slate-500 text-xs mt-0.5">{attempts} attempt{attempts !== 1 ? 's' : ''} · Best: {best}%</p>
+                </div>
+                <span className="text-xs font-medium px-2.5 py-1 rounded border border-slate-200 bg-slate-50 text-slate-700">
+                    {avgPct}% avg
+                </span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-1.5">
+                <div className={`${barColor} h-1.5 rounded-full transition-all duration-700`}
+                    style={{ width: `${avgPct}%` }} />
+            </div>
+            {/* Last 5 attempts sparkline dots */}
+            <div className="flex items-center gap-1.5 mt-3">
+                {entries.slice(-5).map((e, i) => (
+                    <div key={i} title={`${e.pct}% on ${e.date}`}
+                        className={`w-1.5 h-1.5 rounded-full ${e.pct >= 80 ? 'bg-slate-800' : e.pct >= 60 ? 'bg-slate-500' : 'bg-slate-300'}`} />
+                ))}
+                <span className="text-[10px] text-slate-400 ml-1.5 uppercase tracking-wider font-medium">recent</span>
+            </div>
+        </div>
+    )
+}
+
+// ── Spaced repetition: weak topics ───────────────────────────────────────────
+function WeakTopics({ weakTopics }) {
+    if (!weakTopics.length) return (
+        <div className="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-lg">
+            <p className="text-sm">No weak spots identified yet.</p>
+        </div>
+    )
+
+    return (
+        <ul className="space-y-2">
+            {weakTopics.map(({ topic, count }, i) => (
+                <li key={i} className="flex items-center gap-3 bg-white border border-slate-200 rounded-lg px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
+                    <span className="text-slate-400 font-medium text-xs shrink-0 w-4">
+                        {(i + 1).toString().padStart(2, '0')}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-slate-800 text-sm font-medium truncate" title={topic}>
+                            {topic}
+                        </p>
+                    </div>
+                    <span className="text-slate-400 text-xs whitespace-nowrap bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                        Missed {count}x
+                    </span>
+                </li>
+            ))}
+        </ul>
+    )
+}
+
+// ── Main Analytics Dashboard ──────────────────────────────────────────────────
+export default function AnalyticsDashboard() {
+    const { streak, tickStreak } = useStreak()
+    const { totalMinutes, last7 } = useSessions()
+    const { scores, bySubject, weakTopics } = useQuizScores()
+
+    // Tick streak on mount
+    useEffect(() => { tickStreak() }, [])
+
+    const totalQuizzes = scores.length
+    const avgScore = totalQuizzes
+        ? Math.round(scores.reduce((a, s) => a + s.pct, 0) / totalQuizzes)
+        : 0
+    const todayMins = last7.find(d => d.date === new Date().toISOString().slice(0, 10))?.mins || 0
+
+    return (
+        <div className="space-y-6 max-w-6xl mx-auto pb-8 font-sans animate-fade-in">
+            
+            {/* Header */}
+            <div className="mb-6">
+                <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Analytics Overview</h2>
+                <p className="text-sm text-slate-500 mt-1">Monitor your learning progress and performance metrics.</p>
+            </div>
+
+            {/* ── Top stats row ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StreakCard streak={streak} />
+                <StatCard label="Today" value={`${todayMins}m`} sub="Time studied today" icon="⏱️" />
+                <StatCard label="Total Time" value={`${totalMinutes}m`} sub="All recorded sessions" icon="📅" />
+                <StatCard label="Avg Score" value={totalQuizzes ? `${avgScore}%` : '—'}
+                    sub={`Across ${totalQuizzes} assessment${totalQuizzes !== 1 ? 's' : ''}`} icon="🧠" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+                {/* ── Study time chart ── */}
+                <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 flex flex-col justify-between">
+                    <div className="flex items-center justify-between mb-8">
+                        <div>
+                            <h3 className="text-slate-900 font-medium text-sm">Study Time Activity</h3>
+                            <p className="text-slate-500 text-xs mt-1">Minutes per day (Trailing 7 days)</p>
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-600 bg-slate-50 px-2.5 py-1 rounded shadow-sm border border-slate-200">
+                            {last7.reduce((a, d) => a + d.mins, 0)} min total
+                        </span>
+                    </div>
+                    <WeekChart data={last7} />
+                </div>
+
+                {/* ── Subject performance ── */}
+                <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 overflow-hidden flex flex-col h-full">
+                    <h3 className="text-slate-900 font-medium text-sm mb-1">Performance by Subject</h3>
+                    <p className="text-slate-500 text-xs mb-5">Aggregated quiz metrics</p>
+                    
+                    <div className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-[160px]">
+                        {Object.keys(bySubject).length === 0 ? (
+                            <div className="border border-dashed border-slate-200 rounded-lg p-6 text-center text-slate-400 mt-2">
+                                <p className="text-sm">No assessment data available.</p>
+                            </div>
+                        ) : (
+                            Object.entries(bySubject)
+                                .sort((a, b) => {
+                                    const avgA = a[1].reduce((s, e) => s + e.pct, 0) / a[1].length
+                                    const avgB = b[1].reduce((s, e) => s + e.pct, 0) / b[1].length
+                                    return avgA - avgB
+                                })
+                                .map(([name, entries]) => (
+                                    <SubjectRow key={name} subjectName={name} entries={entries} />
+                                ))
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+                {/* ── Spaced repetition ── */}
+                <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+                    <div className="mb-5">
+                        <h3 className="text-slate-900 font-medium text-sm">Focus Areas</h3>
+                        <p className="text-slate-500 text-xs mt-1">Frequently missed topics requiring review</p>
+                    </div>
+                    <WeakTopics weakTopics={weakTopics} />
+                </div>
+
+                {/* ── Recent quiz history ── */}
+                <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 flex flex-col">
+                    <h3 className="text-slate-900 font-medium text-sm mb-1">Recent History</h3>
+                    <p className="text-slate-500 text-xs mb-5">Latest assessments completed</p>
+                    
+                    {scores.length === 0 ? (
+                        <div className="border border-dashed border-slate-200 rounded-lg p-6 text-center text-slate-400 mt-2">
+                            <p className="text-sm">No assessments taken yet.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-1 max-h-[300px] overflow-y-auto pr-2">
+                            {[...scores].reverse().slice(0, 20).map((s) => (
+                                <div key={s.id} className="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0 hover:bg-slate-50 rounded px-2 transition-colors">
+                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.pct >= 80 ? 'bg-slate-800' : s.pct >= 60 ? 'bg-slate-500' : 'bg-slate-300'}`} />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-slate-800 text-sm font-medium truncate">{s.subjectName}</p>
+                                        <p className="text-slate-500 text-[10px] truncate uppercase tracking-wider mt-0.5">{s.fileName} · {s.date}</p>
+                                    </div>
+                                    <span className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded shadow-sm shrink-0">
+                                        {s.score}/{s.total}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    )
+}
+
+
+
+
+
+ErrorBoundary.jsx :- 
+
+// src/components/ErrorBoundary.jsx
+// Wraps sections of your app so one crash doesn't kill everything.
+//
+// USAGE — wrap any major section in App.jsx or Dashboard.jsx:
+//
+//   import ErrorBoundary from './components/ErrorBoundary'
+//
+//   <ErrorBoundary>
+//     <GlobalChatPanel subjects={allSubjects} />
+//   </ErrorBoundary>
+//
+//   <ErrorBoundary label="Analytics">
+//     <AnalyticsDashboard />
+//   </ErrorBoundary>
+
+import { Component } from 'react'
+
+export default class ErrorBoundary extends Component {
+    constructor(props) {
+        super(props)
+        this.state = { hasError: false, error: null }
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error }
+    }
+
+    componentDidCatch(error, info) {
+        // Log to console in dev — swap for Sentry/CloudWatch in production
+        console.error(`[ErrorBoundary: ${this.props.label || 'unnamed'}]`, error, info)
+    }
+
+    handleReset = () => {
+        this.setState({ hasError: false, error: null })
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="bg-red-50 border border-red-100 rounded-2xl p-6 text-center">
+                    <p className="text-2xl mb-2">⚠️</p>
+                    <p className="text-red-700 font-semibold text-sm mb-1">
+                        {this.props.label ? `${this.props.label} failed to load` : 'Something went wrong'}
+                    </p>
+                    <p className="text-red-400 text-xs mb-4">
+                        {this.state.error?.message || 'An unexpected error occurred'}
+                    </p>
+                    <button
+                        onClick={this.handleReset}
+                        className="text-xs font-medium px-4 py-2 rounded-xl bg-red-100
+              hover:bg-red-200 text-red-700 transition-colors"
+                    >
+                        Try again
+                    </button>
+                </div>
+            )
+        }
+
+        return this.props.children
+    }
+}
+
+
+
+FileList.jsx :- 
+import { useState, useEffect, useRef } from 'react'
+import { list, getUrl, remove } from 'aws-amplify/storage'
+import { getCurrentUser } from 'aws-amplify/auth'
+import { extractTextFromPDF } from '../utils/pdfTextExtractor'
+import { summarizeText } from '../utils/summarize'
+import { generateQuiz } from '../utils/Quizgenerator'
+import QuizModal from './QuizModal'
+import PDFViewer from './PDFViewer'
+
+// ── Export summary as styled print PDF ───────────────────────────────────────
+function exportSummaryAsPDF(summary, fileName, subjectName) {
+  const win = window.open('', '_blank')
+  win.document.write(`<!DOCTYPE html><html><head>
+    <title>${subjectName} — Summary</title>
+    <style>
+      body{font-family:'Segoe UI',sans-serif;max-width:780px;margin:40px auto;color:#1e293b;line-height:1.7}
+      h1{font-size:1.5rem;color:#6d28d9;margin-bottom:4px}
+      p.sub{color:#64748b;font-size:.85rem;margin-bottom:28px}
+      pre{white-space:pre-wrap;font-family:inherit;font-size:.95rem}
+      @media print{body{margin:20px}}
+    </style></head><body>
+    <h1>📄 ${subjectName} — Summary</h1>
+    <p class="sub">Source: ${fileName} · Generated by StudyMate AI</p>
+    <pre>${summary}</pre>
+    </body></html>`)
+  win.document.close()
+  setTimeout(() => win.print(), 400)
+}
+
+// ─── Summary Modal ────────────────────────────────────────────────────────────
+function SummaryModal({ summary, fileName, subjectName, onClose }) {
+  const formatText = (text) => text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/\n/g, '<br/>')
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border border-slate-100 animate-fade-in relative overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-white z-10">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <span className="text-emerald-500">✨</span> AI Summary
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">{fileName}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => exportSummaryAsPDF(summary, fileName, subjectName)}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-semibold transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 8l-3-3m3 3l3-3" /></svg>
+              Export PDF
+            </button>
+            <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">✕</button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-slate-50">
+          <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed bg-white p-6 rounded-2xl shadow-sm border border-slate-100"
+            dangerouslySetInnerHTML={{ __html: formatText(summary) }} />
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 bg-white flex justify-between items-center z-10">
+          <p className="text-xs text-slate-400 font-medium tracking-wide flex items-center gap-1">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            Generated by StudyMate AI
+          </p>
+          <button onClick={onClose} className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-xl shadow-sm transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function FileList({ subjectName, refreshTrigger }) {
+  const [files, setFiles] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [summaries, setSummaries] = useState({})
+  const [loadingSummary, setLoadingSummary] = useState({})
+  const [errors, setErrors] = useState({})
+  const [loadingQuiz, setLoadingQuiz] = useState({})
+  const [quizData, setQuizData] = useState(null)
+  const [quizFileName, setQuizFileName] = useState('')
+  const [pdfTexts, setPdfTexts] = useState({})
+  const [viewerFile, setViewerFile] = useState(null)
+  const [activeSummary, setActiveSummary] = useState(null) // { content, fileName }
+  const [listening, setListening] = useState({})
+  const [sharing, setSharing] = useState({})
+  const [shareMenuOpen, setShareMenuOpen] = useState({})
+  const [localToast, setLocalToast] = useState(null)
+  const recogRefs = useRef({})
+
+  const voiceSupported = typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+  useEffect(() => { fetchFiles() }, [subjectName, refreshTrigger])
+
+  const fetchFiles = async () => {
+    try {
+      setLoading(true)
+      const user = await getCurrentUser()
+      const prefix = `private/${user.userId}/${subjectName}/`
+      const result = await list({ path: prefix })
+      setFiles(result.items.filter(item => item.path !== prefix && item.size > 0))
+    } catch (err) { console.error('Failed to list files:', err) }
+    finally { setLoading(false) }
+  }
+
+  const handleDelete = async (filePath) => {
+    try { await remove({ path: filePath }); setFiles(prev => prev.filter(f => f.path !== filePath)) }
+    catch { /* silent */ }
+  }
+
+  const getPDFText = async (file, fileName) => {
+    if (pdfTexts[file.path]) return pdfTexts[file.path]
+    const { url } = await getUrl({ path: file.path, options: { expiresIn: 3600 } })
+    const response = await fetch(url.href)
+    if (!response.ok) throw new Error('Failed to download PDF.')
+    const blob = await response.blob()
+    const text = await extractTextFromPDF(new File([blob], fileName, { type: 'application/pdf' }))
+    setPdfTexts(prev => ({ ...prev, [file.path]: text }))
+    return text
+  }
+
+  const handleSummarize = async (file, fileName) => {
+    // If we've already generated it, just pop open the modal
+    if (summaries[file.path]) {
+      setActiveSummary({ content: summaries[file.path], fileName })
+      return
+    }
+
+    setErrors(prev => ({ ...prev, [file.path]: null }))
+    setLoadingSummary(prev => ({ ...prev, [file.path]: true }))
+    try {
+      const text = await getPDFText(file, fileName)
+      const result = await summarizeText(text)
+      setSummaries(prev => ({ ...prev, [file.path]: result }))
+      setActiveSummary({ content: result, fileName })
+    } catch (err) {
+      setErrors(prev => ({ ...prev, [file.path]: err.message || 'Failed to summarize PDF' }))
+    } finally {
+      setLoadingSummary(prev => ({ ...prev, [file.path]: false }))
+    }
+  }
+
+  const showToast = (message, type = 'success') => {
+    setLocalToast({ message, type })
+    setTimeout(() => setLocalToast(null), 3000)
+  }
+
+  const handleShare = async (file, action) => {
+    setSharing(prev => ({ ...prev, [file.path]: action }))
+    try {
+      // Generate a secure URL valid for 1 hour (3600 seconds)
+      const { url } = await getUrl({
+        path: file.path,
+        options: { expiresIn: 3600 }
+      })
+      const link = url.href
+
+      if (action === 'copy') {
+        await navigator.clipboard.writeText(link)
+        showToast('Secure link copied to clipboard!', 'success')
+      } else if (action === 'open') {
+        window.open(link, '_blank')
+      }
+    } catch (error) {
+      console.error('Failed to generate sharing link:', error)
+      showToast('Failed to generate sharing link.', 'error')
+    } finally {
+      setSharing(prev => ({ ...prev, [file.path]: null }))
+    }
+  }
+
+  const handleGenerateQuiz = async (file, fileName) => {
+    setErrors(prev => ({ ...prev, [file.path]: null }))
+    setLoadingQuiz(prev => ({ ...prev, [file.path]: true }))
+    try {
+      const text = await getPDFText(file, fileName)
+      const questions = await generateQuiz(text)
+      setQuizFileName(fileName)
+      setQuizData(questions)
+    } catch (err) {
+      setErrors(prev => ({ ...prev, [file.path]: err.message || 'Failed to generate quiz' }))
+    } finally {
+      setLoadingQuiz(prev => ({ ...prev, [file.path]: false }))
+    }
+  }
+
+  const toggleVoice = (file, fileName) => {
+    if (!voiceSupported) { alert('Voice input not supported in this browser.'); return }
+    if (listening[file.path]) {
+      recogRefs.current[file.path]?.stop()
+      setListening(prev => ({ ...prev, [file.path]: false }))
+      return
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    const r = new SR()
+    r.lang = 'en-US'
+    r.interimResults = false
+    r.onresult = () => {
+      setListening(prev => ({ ...prev, [file.path]: false }))
+      handleSummarize(file, fileName)   // trigger summary on voice
+    }
+    r.onerror = r.onend = () => setListening(prev => ({ ...prev, [file.path]: false }))
+    r.start()
+    recogRefs.current[file.path] = r
+    setListening(prev => ({ ...prev, [file.path]: true }))
+  }
+
+  if (loading) return (
+    <div className="flex items-center gap-2 py-3 text-slate-400 text-xs">
+      <div className="w-3 h-3 border border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+      Loading files...
+    </div>
+  )
+
+  if (files.length === 0) return (
+    <div className="py-4 text-center text-slate-400 text-xs italic">No PDFs uploaded yet.</div>
+  )
+
+  return (
+    <>
+      {/* FileList Local Toast for Sharing */}
+      {localToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-2 px-5 py-3 rounded-full shadow-lg border animate-fade-in
+          bg-slate-800 border-slate-700 text-white min-w-[max-content] justify-center transition-all duration-300">
+          <span className="text-lg">{localToast.type === 'success' ? '✓' : '✕'}</span>
+          <span className="text-sm font-medium">{localToast.message}</span>
+        </div>
+      )}
+
+      {activeSummary && (
+        <SummaryModal summary={activeSummary.content} fileName={activeSummary.fileName}
+          subjectName={subjectName} onClose={() => setActiveSummary(null)} />
+      )}
+      {quizData && (
+        <QuizModal questions={quizData} fileName={quizFileName}
+          subjectName={subjectName} onClose={() => setQuizData(null)} />
+      )}
+      {viewerFile && (
+        <PDFViewer filePath={viewerFile.path} fileName={viewerFile.name} subjectName={subjectName}
+          onClose={() => setViewerFile(null)} />
+      )}
+
+      <ul className="space-y-2 mt-1">
+        {files.map((file) => {
+          const fileName = file.path.split('/').pop()
+          const sizeKB = file.size ? `${(file.size / 1024).toFixed(1)} KB` : ''
+          const isLoadingSummary = loadingSummary[file.path]
+          const isLoadingQuiz = loadingQuiz[file.path]
+          const isBusy = isLoadingSummary || isLoadingQuiz
+          const isListening = listening[file.path]
+
+          return (
+            <li key={file.path}
+              className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden group">
+
+              {/* File info */}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
+                    <path fill="white" d="M14 2v6h6" opacity="0.4" />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-slate-700 text-xs font-semibold truncate">{fileName}</p>
+                  {sizeKB && <p className="text-slate-400 text-[10px] mt-0.5">{sizeKB}</p>}
+                </div>
+                <button onClick={() => handleDelete(file.path)} disabled={isBusy}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-300
+                    hover:text-red-500 text-[10px] font-medium px-2 py-1 rounded-lg
+                    hover:bg-red-50 disabled:opacity-0 shrink-0">
+                  Del
+                </button>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 px-4 pb-3 flex-wrap">
+
+                {/* View in-app */}
+                <button onClick={() => setViewerFile({ path: file.path, name: fileName })}
+                  disabled={isBusy}
+                  className="flex items-center gap-1.5 text-slate-600 hover:text-slate-800 text-[11px]
+                    font-medium px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200
+                    transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  View
+                </button>
+
+                {/* Summary */}
+                <button onClick={() => handleSummarize(file, fileName)} disabled={isBusy}
+                  className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 text-[11px]
+                    font-medium px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100
+                    transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                  {isLoadingSummary
+                    ? <><div className="w-2.5 h-2.5 border border-emerald-500 border-t-transparent rounded-full animate-spin" />Summarizing...</>
+                    : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>Summary</>}
+                </button>
+
+                {/* Quiz */}
+                <button onClick={() => handleGenerateQuiz(file, fileName)} disabled={isBusy}
+                  className="flex items-center gap-1.5 text-violet-700 hover:text-violet-800 text-[11px]
+                    font-medium px-3 py-1.5 rounded-xl bg-violet-50 hover:bg-violet-100
+                    transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                  {isLoadingQuiz
+                    ? <><div className="w-2.5 h-2.5 border border-violet-500 border-t-transparent rounded-full animate-spin" />Generating...</>
+                    : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>Quiz</>}
+                </button>
+                {/* Share Dropdown */}
+                <div className="relative">
+                  <button onClick={() => setShareMenuOpen(prev => ({ ...prev, [file.path]: !prev[file.path] }))} disabled={isBusy || sharing[file.path]}
+                    className="flex items-center gap-1.5 text-blue-700 hover:text-blue-800 text-[11px]
+                      font-medium px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100
+                      transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    {sharing[file.path]
+                      ? <><div className="w-2.5 h-2.5 border border-blue-500 border-t-transparent rounded-full animate-spin" />Link...</>
+                      : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                      </svg>Share</>}
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {shareMenuOpen[file.path] && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShareMenuOpen(prev => ({ ...prev, [file.path]: false }))} />
+                      <div className="absolute top-full left-0 mt-1 w-36 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-20">
+                        <button onClick={() => { handleShare(file, 'copy'); setShareMenuOpen(prev => ({ ...prev, [file.path]: false })) }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-[11px] text-slate-700 font-medium flex items-center gap-2 transition-colors">
+                          <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                          Copy secure link
+                        </button>
+                        <button onClick={() => { handleShare(file, 'open'); setShareMenuOpen(prev => ({ ...prev, [file.path]: false })) }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-[11px] text-slate-700 font-medium flex items-center gap-2 transition-colors">
+                          <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                          Open in browser
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Voice */}
+                {voiceSupported && (
+                  <button onClick={() => toggleVoice(file, fileName)} disabled={isBusy && !isListening}
+                    title="Tap and speak — triggers AI summary"
+                    className={`flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-xl
+                      transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+                      ${isListening
+                        ? 'bg-red-500 text-white animate-pulse'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 016 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                    {isListening ? 'Listening…' : 'Voice'}
+                  </button>
+                )}
+              </div>
+
+              {/* Error */}
+              {errors[file.path] && (
+                <div className="mx-4 mb-3 text-[11px] text-red-600 bg-red-50 rounded-xl px-3 py-2 border border-red-100">
+                  {errors[file.path]}
+                </div>
+              )}
+
+              {/* Summary output used to be here, but is now a Modal. */}
+            </li>
+          )
+        })}
+      </ul>
+    </>
+  )
+}
+
+
+
+GlobalChatPanel.jsx :-
+
+import { useState, useRef, useEffect } from 'react'
+import { list, getUrl } from 'aws-amplify/storage'
+import { getCurrentUser } from 'aws-amplify/auth'
+import { extractTextFromPDF } from '../utils/pdfTextExtractor'
+import { groqChat } from '../utils/groqClient'
+
+const CHARS_PER_DOC = 800
+const MAX_HISTORY = 4
+
+const PERSONAS = {
+    'Artificial Intelligence': 'an expert AI professor who explains concepts with real-world examples',
+    'Machine Learning': 'a data science mentor who explains ML algorithms with intuitive analogies',
+    'Cloud Computing': 'a cloud architect who explains infrastructure with practical use cases',
+    'Data Structures': 'a computer science professor who explains DSA with code examples',
+    'default': 'a knowledgeable and friendly study assistant',
+}
+
+function getPersona(subjects) {
+    if (!subjects?.length) return PERSONAS.default
+    if (subjects.length === 1) return PERSONAS[subjects[0].name] || PERSONAS.default
+    return 'an expert tutor covering ' + subjects.map(s => s.name).join(', ')
+}
+
+async function loadAllPdfTexts(userId, subjects) {
+    const allTexts = []
+    await Promise.all(subjects.map(async (subject) => {
+        try {
+            const prefix = `private/${userId}/${subject.name}/`
+            const result = await list({ path: prefix })
+            const pdfs = result.items.filter(i => i.path !== prefix && i.size > 0)
+            await Promise.all(pdfs.map(async (file) => {
+                try {
+                    const fileName = file.path.split('/').pop()
+                    const { url } = await getUrl({ path: file.path, options: { expiresIn: 3600 } })
+                    const res = await fetch(url.href)
+                    const blob = await res.blob()
+                    const text = await extractTextFromPDF(new File([blob], fileName, { type: 'application/pdf' }))
+                    allTexts.push({ subject: subject.name, fileName, text })
+                } catch { /* skip */ }
+            }))
+        } catch { /* skip */ }
+    }))
+    return allTexts
+}
+
+function buildContext(pdfDocs) {
+    if (!pdfDocs?.length) return null
+    return pdfDocs
+        .map(doc => `[${doc.subject} — ${doc.fileName}]\n${doc.text.slice(0, CHARS_PER_DOC)}`)
+        .join('\n\n')
+}
+
+function formatMessage(text) {
+    return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br/>')
+}
+
+export default function GlobalChatPanel({ subjects }) {
+    const [isOpen, setIsOpen] = useState(false)
+    const [messages, setMessages] = useState([{
+        role: 'assistant',
+        content: `👋 Hi! I'm your **StudyMate AI**. Ask me anything about your uploaded study materials!`,
+    }])
+    const [input, setInput] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [indexing, setIndexing] = useState(false)
+    const [pdfDocs, setPdfDocs] = useState(null)
+    const [docCount, setDocCount] = useState(0)
+    const [listening, setListening] = useState(false)
+    const bottomRef = useRef(null)
+    const recogRef = useRef(null)
+
+    const voiceSupported = typeof window !== 'undefined' &&
+        ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+    useEffect(() => { if (isOpen && pdfDocs === null) indexAllDocs() }, [isOpen])
+
+    const indexAllDocs = async () => {
+        // FIX: guard against setting state after unmount (e.g. user closes panel mid-fetch)
+        let isMounted = true
+        setIndexing(true)
+        try {
+            const user = await getCurrentUser()
+            const docs = await loadAllPdfTexts(user.userId, subjects)
+            if (!isMounted) return
+            setPdfDocs(docs); setDocCount(docs.length)
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: docs.length > 0
+                    ? `📚 Loaded **${docs.length} PDF${docs.length !== 1 ? 's' : ''}** across your subjects. What would you like to know?`
+                    : `📂 No study materials yet. Upload some PDFs and come back!`,
+            }])
+        } catch (err) {
+            if (!isMounted) return
+            setMessages(prev => [...prev, { role: 'assistant', content: `Couldn't load materials: ${err.message}` }])
+            setPdfDocs([])
+        } finally {
+            if (isMounted) setIndexing(false)
+        }
+        return () => { isMounted = false }
+    }
+
+    const sendMessage = async (overrideText) => {
+        const text = (overrideText ?? input).trim()
+        if (!text || loading || indexing) return
+        setMessages(prev => [...prev, { role: 'user', content: text }])
+        setInput('')
+        setLoading(true)
+        try {
+            const context = buildContext(pdfDocs)
+            const persona = getPersona(subjects)
+            const history = messages.slice(1).slice(-MAX_HISTORY).map(m => ({ role: m.role, content: m.content }))
+            const systemPrompt = context
+                ? `You are ${persona}. Answer based on the study materials below. Be concise. Cite which file your answer is from.\n\nMATERIALS:\n${context}`
+                : `You are ${persona}. No study materials uploaded yet. Encourage the user to upload PDFs.`
+            const reply = await groqChat({
+                max_tokens: 512, temperature: 0.5,
+                messages: [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: text }],
+            })
+            setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+        } catch (err) {
+            const isRate = err.message?.toLowerCase().includes('rate limit') || err.message?.includes('tpm')
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: isRate ? `⏳ Rate limit hit. Wait **60 seconds** and try again.` : `Error: ${err.message}`,
+            }])
+        } finally { setLoading(false) }
+    }
+
+    const toggleVoice = () => {
+        if (!voiceSupported) { alert('Voice not supported in this browser.'); return }
+        if (listening) { recogRef.current?.stop(); setListening(false); return }
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+        const r = new SR()
+        r.lang = 'en-US'; r.interimResults = false
+        r.onresult = (e) => {
+            const t = e.results[0][0].transcript
+            setInput(t); setListening(false); sendMessage(t)
+        }
+        r.onerror = r.onend = () => setListening(false)
+        r.start(); recogRef.current = r; setListening(true)
+    }
+
+    const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }
+
+    const personaLabel = subjects?.length === 1
+        ? `${subjects[0].name} professor`
+        : `Tutor for ${subjects?.length || 0} subjects`
+
+    return (
+        <div className="mb-8">
+            {!isOpen ? (
+                <button onClick={() => setIsOpen(true)}
+                    className="w-full flex items-center gap-3 bg-gradient-to-r from-violet-600 to-indigo-600
+            hover:from-violet-700 hover:to-indigo-700 text-white rounded-2xl px-5 py-4
+            shadow-md hover:shadow-lg transition-all duration-200 group">
+                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                    </div>
+                    <div className="text-left flex-1">
+                        <p className="font-semibold text-sm">StudyMate AI</p>
+                        <p className="text-white/70 text-xs">Ask anything · Voice enabled · Subject-aware</p>
+                    </div>
+                    <svg className="w-4 h-4 text-white/60 group-hover:text-white transition-colors shrink-0"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            ) : (
+                <div className="bg-white border border-violet-100 rounded-2xl overflow-hidden shadow-md">
+                    {/* Header */}
+                    <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-violet-600 to-indigo-600">
+                        <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-white font-semibold text-sm">StudyMate AI</p>
+                            <p className="text-white/60 text-xs truncate">
+                                {indexing ? 'Loading materials…'
+                                    : docCount > 0 ? `${docCount} PDFs · Acting as ${personaLabel}`
+                                        : 'No materials loaded yet'}
+                            </p>
+                        </div>
+                        <button onClick={() => setIsOpen(false)}
+                            className="text-white/60 hover:text-white transition-colors text-lg leading-none shrink-0">✕</button>
+                    </div>
+
+                    {/* Messages */}
+                    <div className="flex flex-col gap-3 p-4 h-80 overflow-y-auto bg-slate-50">
+                        {messages.map((msg, i) => (
+                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                {msg.role === 'assistant' && (
+                                    <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center
+                    text-violet-600 text-xs font-bold shrink-0 mt-1 mr-2">AI</div>
+                                )}
+                                <div className={`max-w-[80%] px-3 py-2.5 rounded-2xl text-xs leading-relaxed
+                    ${msg.role === 'user'
+                                        ? 'bg-violet-600 text-white rounded-br-sm'
+                                        : 'bg-white text-slate-700 rounded-bl-sm border border-slate-100 shadow-sm'}`}
+                                    dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }} />
+                            </div>
+                        ))}
+                        {(loading || indexing) && (
+                            <div className="flex justify-start">
+                                <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center
+                  text-violet-600 text-xs font-bold shrink-0 mt-1 mr-2">AI</div>
+                                <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-sm px-3 py-2.5 flex items-center gap-1.5">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                                </div>
+                            </div>
+                        )}
+                        <div ref={bottomRef} />
+                    </div>
+
+                    {/* Input */}
+                    <div className="flex items-center gap-2 px-3 py-3 border-t border-slate-100 bg-white">
+                        {voiceSupported && (
+                            <button onClick={toggleVoice} disabled={loading || indexing} title="Speak your question"
+                                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-colors
+                  disabled:opacity-40 disabled:cursor-not-allowed
+                  ${listening ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-500 hover:bg-violet-100 hover:text-violet-600'}`}>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 016 0v6a3 3 0 01-3 3z" />
+                                </svg>
+                            </button>
+                        )}
+                        <input type="text" value={input} onChange={e => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={listening ? 'Listening…' : indexing ? 'Loading materials…' : 'Ask anything about your study materials…'}
+                            disabled={loading || indexing}
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs
+                text-slate-700 placeholder-slate-400 focus:outline-none focus:border-violet-400
+                focus:ring-1 focus:ring-violet-400 disabled:opacity-50"/>
+                        <button onClick={() => sendMessage()} disabled={loading || indexing || !input.trim()}
+                            className="bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed
+                text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors shrink-0">
+                            Send
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+
+
+PDFViewer.jsx :- 
+
+import { useState, useEffect, useRef } from 'react'
+import { getUrl } from 'aws-amplify/storage'
+import { useNotes } from '../hooks/useNotes'
+import { extractTextFromPDF } from '../utils/pdfTextExtractor'
+import { groqChat, groqChatWithContext } from '../utils/groqClient'
+import { saveQuizScore } from '../hooks/useStudyTracker'
+
+export default function PDFViewer({ filePath, fileName, subjectName, onClose }) {
+    const [pdfUrl, setPdfUrl] = useState(null)
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState(null)
+    
+    // Extracted text
+    const [pdfText, setPdfText] = useState('')
+    const [isExtracting, setIsExtracting] = useState(false)
+
+    // Notes
+    const { notes, addNote } = useNotes(filePath)
+    const [noteInput, setNoteInput] = useState('')
+
+    // Active Tab in Sidebar
+    const [activeTab, setActiveTab] = useState('Chat') // 'Chat' | 'Quiz' | 'Notes'
+
+    // AI Chat
+    const [messages, setMessages] = useState([{ role: 'assistant', content: 'Hi! Ask me anything about this document.' }])
+    const [chatInput, setChatInput] = useState('')
+    const [isChatting, setIsChatting] = useState(false)
+    const chatEndRef = useRef(null)
+
+    // Auto-Quiz
+    const [quiz, setQuiz] = useState(null)
+    const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false)
+    const [userAnswers, setUserAnswers] = useState({})
+    const [quizScore, setQuizScore] = useState(null)
+
+    useEffect(() => {
+        let objectUrl = null
+
+        const load = async () => {
+            try {
+                setLoading(true)
+                const { url } = await getUrl({ path: filePath, options: { expiresIn: 3600 } })
+                const res = await fetch(url.href)
+                const blob = await res.blob()
+                objectUrl = URL.createObjectURL(blob)
+                setPdfUrl(objectUrl)
+
+                // Extract text for AI
+                setIsExtracting(true)
+                try {
+                    const text = await extractTextFromPDF(new File([blob], fileName, { type: 'application/pdf' }))
+                    setPdfText(text)
+                } catch (err) {
+                    console.error('Text extraction failed:', err)
+                } finally {
+                    setIsExtracting(false)
+                }
+
+            } catch (err) {
+                setError('Could not load PDF: ' + err.message)
+            } finally {
+                setLoading(false)
+            }
+        }
+
+        load()
+
+        return () => {
+            if (objectUrl) URL.revokeObjectURL(objectUrl)
+        }
+    }, [filePath, fileName])
+
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [messages, activeTab])
+
+    useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape') onClose() }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [onClose])
+
+    const handleChat = async () => {
+        if (!chatInput.trim() || isChatting) return
+        const newMsg = chatInput.trim()
+        setChatInput('')
+        setMessages(prev => [...prev, { role: 'user', content: newMsg }])
+        setIsChatting(true)
+        
+        try {
+            const updatedHistory = [
+                ...messages.slice(1).map(m => ({ role: m.role, content: m.content })),
+                { role: 'user', content: newMsg }
+            ]
+            const reply = await groqChatWithContext(
+                pdfText || 'No text could be extracted from this PDF.',
+                updatedHistory
+            )
+            setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+        } catch (err) {
+            setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}` }])
+        } finally {
+            setIsChatting(false)
+        }
+    }
+
+    const generateQuiz = async () => {
+        if (!pdfText) {
+            alert('Wait for document to be extracted or document has no text.')
+            return
+        }
+        setIsGeneratingQuiz(true)
+        setQuiz(null)
+        setUserAnswers({})
+        setQuizScore(null)
+        try {
+            const prompt = `Based strictly on the following text, generate a JSON array of 3 multiple-choice questions. 
+Respond ONLY with raw JSON, nothing else. Format required: 
+[{"q":"Question?","options":["A","B","C","D"],"ans":"The exact text of the correct option"}]
+\nTEXT:\n${pdfText.slice(0, 5000)}`
+            const reply = await groqChat({
+                messages: [{ role: 'system', content: prompt }],
+                temperature: 0.3
+            })
+            const parsed = JSON.parse(reply.replace(/```json/g, '').replace(/```/g, '').trim())
+            setQuiz(parsed)
+        } catch (err) {
+            console.error('Quiz Error:', err)
+            alert('Failed to generate quiz. Try again.')
+        } finally {
+            setIsGeneratingQuiz(false)
+        }
+    }
+
+    const submitQuiz = () => {
+        let score = 0
+        const mappedQuestions = []
+        const mappedAnswers = {}
+        quiz.forEach((q, i) => {
+            const isCorrect = userAnswers[i] === q.ans
+            if (isCorrect) score++
+            mappedQuestions.push({ question: q.q })
+            mappedAnswers[i] = { correct: isCorrect }
+        })
+        setQuizScore(score)
+        
+        saveQuizScore({
+            subjectName: subjectName || 'General',
+            fileName,
+            score,
+            total: quiz.length,
+            questions: mappedQuestions,
+            answers: mappedAnswers
+        })
+    }
+
+    return (
+        <div className="fixed inset-0 z-50 flex bg-slate-900/95 backdrop-blur-sm">
+            
+            {/* ── Left: PDF Viewer (70%) ── */}
+            <div className="flex-1 flex flex-col h-full border-r border-slate-700 w-2/3 lg:w-[70%] xl:w-[75%]">
+                <div className="flex items-center gap-3 px-4 py-3 bg-slate-800 shrink-0">
+                    <div className="w-7 h-7 rounded-lg bg-violet-500/20 flex items-center justify-center shrink-0">📄</div>
+                    <p className="text-white text-sm font-medium flex-1 truncate">{fileName}</p>
+                    {pdfUrl && (
+                        <a href={pdfUrl} download={fileName} className="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg transition">Download</a>
+                    )}
+                    <button onClick={onClose} className="text-white/70 hover:text-white px-3 py-1 rounded hover:bg-slate-700 transition">✕ Close</button>
+                </div>
+                <div className="flex-1 overflow-hidden relative bg-slate-100">
+                    {loading && <div className="absolute inset-0 flex items-center justify-center text-slate-500 font-medium">Loading document...</div>}
+                    {error && <div className="absolute inset-0 flex items-center justify-center text-red-500 font-medium">{error}</div>}
+                    {pdfUrl && <iframe src={pdfUrl} title="PDF Viewer" className="w-full h-full border-none bg-white" />}
+                </div>
+            </div>
+
+            {/* ── Right: AI Student OS Sidebar (30%) ── */}
+            <div className="w-1/3 lg:w-[30%] xl:w-[25%] min-w-[320px] flex flex-col h-full bg-white shrink-0">
+                <div className="flex w-full border-b border-slate-100 bg-slate-50 shrink-0">
+                    {['Chat', 'Quiz', 'Notes'].map(tab => (
+                        <button key={tab} onClick={() => setActiveTab(tab)}
+                            className={`flex-1 py-3.5 text-sm font-semibold transition-colors 
+                            ${activeTab === tab ? 'text-violet-600 border-b-2 border-violet-600 bg-white' : 'text-slate-500 hover:text-slate-700'}`}>
+                            {tab === 'Chat' ? '🤖 AI Chat' : tab === 'Quiz' ? '⚡ Auto-Quiz' : '📝 Notes'}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex-1 overflow-hidden relative shadow-inner">
+                    
+                    {/* Chat Tab */}
+                    {activeTab === 'Chat' && (
+                        <div className="flex flex-col h-full bg-slate-50">
+                            {isExtracting && <div className="bg-amber-100 text-amber-800 text-xs text-center py-1.5 font-medium border-b border-amber-200 shadow-sm animate-pulse">Scanning document for AI...</div>}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                {messages.map((m, i) => (
+                                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                        {m.role === 'assistant' && <div className="w-6 h-6 rounded-full bg-violet-100 text-violet-600 font-bold text-[10px] flex items-center justify-center mr-2 shrink-0 mt-0.5">AI</div>}
+                                        <div className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-sm
+                                            ${m.role === 'user' ? 'bg-violet-600 text-white rounded-tr-sm' : 'bg-white text-slate-700 rounded-tl-sm border border-slate-100'}`}
+                                            dangerouslySetInnerHTML={m.role === 'assistant' ? {
+                                                __html: m.content
+                                                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                                                    .replace(/\n/g, '<br/>')
+                                            } : undefined}>
+                                            {m.role === 'user' ? m.content : null}
+                                        </div>
+                                    </div>
+                                ))}
+                                {isChatting && (
+                                    <div className="flex items-center text-[10px] text-slate-400 font-medium ml-8 space-x-1">
+                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"></div>
+                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" style={{animationDelay: "0.2s"}}></div>
+                                        <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" style={{animationDelay: "0.4s"}}></div>
+                                    </div>
+                                )}
+                                <div ref={chatEndRef} />
+                            </div>
+                            <div className="p-3 border-t border-slate-200 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                                <form onSubmit={e => { e.preventDefault(); handleChat() }} className="flex gap-2">
+                                    <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} 
+                                        placeholder="Ask about this document..." disabled={isExtracting || isChatting}
+                                        className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 disabled:opacity-60 transition" />
+                                    <button type="submit" disabled={!chatInput.trim() || isChatting || isExtracting}
+                                        className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm disabled:opacity-50 transition flex items-center justify-center">
+                                        <svg className="w-4 h-4 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quiz Tab */}
+                    {activeTab === 'Quiz' && (
+                        <div className="h-full overflow-y-auto bg-slate-50 flex flex-col p-5">
+                            {!quiz && !isGeneratingQuiz && (
+                                <div className="flex flex-col items-center justify-center flex-1 text-center bg-white rounded-2xl p-6 border border-slate-100 shadow-sm animate-fade-in my-auto h-fit">
+                                    <div className="w-16 h-16 bg-violet-100 rounded-full flex items-center justify-center text-3xl mb-4 shadow-inner">🧠</div>
+                                    <h3 className="font-bold text-slate-800 text-lg mb-2">Test Your Knowledge</h3>
+                                    <p className="text-[13px] text-slate-500 mb-6 leading-relaxed">StudyMate AI will read this exact document and generate a personalized multiple-choice quiz.</p>
+                                    <button onClick={generateQuiz} disabled={isExtracting}
+                                        className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white py-3 rounded-xl text-sm font-bold shadow-md transition disabled:opacity-50 transform hover:-translate-y-0.5 relative overflow-hidden group">
+                                        <span className="relative z-10">{isExtracting ? 'Extracting Text...' : 'Generate AI Quiz'}</span>
+                                        <div className="absolute inset-0 bg-white/20 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-500 ease-out"></div>
+                                    </button>
+                                </div>
+                            )}
+
+                            {isGeneratingQuiz && (
+                                <div className="flex flex-col items-center justify-center flex-1">
+                                    <div className="relative w-16 h-16 mb-4">
+                                        <div className="absolute inset-0 border-4 border-violet-200 rounded-full"></div>
+                                        <div className="absolute inset-0 border-4 border-violet-600 rounded-full border-t-transparent animate-spin"></div>
+                                        <div className="absolute inset-0 flex items-center justify-center text-xl">⚡</div>
+                                    </div>
+                                    <p className="text-sm font-bold text-slate-700">Analyzing Document...</p>
+                                    <p className="text-xs text-slate-400 mt-1 animate-pulse">Crafting clever questions</p>
+                                </div>
+                            )}
+
+                            {quiz && (
+                                <div className="flex flex-col gap-5 pb-6 animate-fade-in">
+                                    {quizScore !== null && (
+                                        <div className={`p-5 rounded-2xl text-center shadow-sm border ${quizScore === quiz.length ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-violet-50 border-violet-200 text-violet-800'}`}>
+                                            <div className="text-3xl mb-2">{quizScore === quiz.length ? '🏆' : '💪'}</div>
+                                            <div className="font-bold text-lg mb-1">Score: {quizScore} / {quiz.length}</div>
+                                            <div className="text-xs opacity-80">{quizScore === quiz.length ? 'Perfect score! You mastered this.' : 'Great effort! Keep studying.'}</div>
+                                        </div>
+                                    )}
+                                    {quiz.map((q, i) => (
+                                        <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                                            <p className="font-semibold text-slate-800 text-[14px] mb-4 leading-snug"><span className="text-violet-500 mr-1">{i + 1}.</span> {q.q}</p>
+                                            <div className="flex flex-col gap-2.5">
+                                                {q.options.map((opt, optIdx) => {
+                                                    const isSelected = userAnswers[i] === opt
+                                                    const isCorrectAns = q.ans === opt
+                                                    const showCorrect = quizScore !== null && isCorrectAns
+                                                    const showWrong = quizScore !== null && isSelected && !isCorrectAns
+
+                                                    let btnClass = "text-left px-4 py-3 rounded-xl text-[13px] transition-all border flex gap-3 relative overflow-hidden group "
+                                                    if (showCorrect) btnClass += "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium shadow-sm"
+                                                    else if (showWrong) btnClass += "bg-red-50 border-red-300 text-red-900"
+                                                    else if (isSelected) btnClass += "bg-violet-50 border-violet-400 text-violet-900 shadow-sm"
+                                                    else btnClass += "bg-white border-slate-200 hover:border-violet-300 hover:bg-slate-50 text-slate-700"
+
+                                                    return (
+                                                        <button key={optIdx} disabled={quizScore !== null} onClick={() => setUserAnswers(prev => ({ ...prev, [i]: opt }))} className={btnClass}>
+                                                            <div className={`w-5 h-5 rounded-full border flex flex-shrink-0 items-center justify-center transition-colors
+                                                                ${showCorrect ? 'bg-emerald-500 border-emerald-500' : showWrong ? 'bg-red-500 border-red-500' : isSelected ? 'bg-violet-500 border-violet-500' : 'border-slate-300 group-hover:border-violet-300 bg-white'}`}>
+                                                                {(showCorrect || isSelected || showWrong) && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                            </div>
+                                                            <span className="flex-1 pt-0.5 leading-snug">{opt}</span>
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {quizScore === null ? (
+                                        <button onClick={submitQuiz} disabled={Object.keys(userAnswers).length !== quiz.length}
+                                            className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3.5 rounded-xl shadow-md transition disabled:opacity-50 mt-2">
+                                            Submit Answers
+                                        </button>
+                                    ) : (
+                                        <button onClick={generateQuiz} className="w-full border-2 border-slate-200 text-slate-700 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition mt-2">
+                                            Generate Another Quiz
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Notes Tab */}
+                    {activeTab === 'Notes' && (
+                        <div className="h-full flex flex-col p-5 bg-slate-50">
+                            <h3 className="font-bold text-slate-800 mb-1">Personal Notes</h3>
+                            <p className="text-xs text-slate-500 mb-4">These notes are saved automatically to this specific PDF.</p>
+                            
+                            <form onSubmit={e => { e.preventDefault(); if(noteInput.trim()) { addNote(noteInput); setNoteInput('') } }} className="flex gap-2 mb-6">
+                                <input value={noteInput} onChange={e => setNoteInput(e.target.value)} placeholder="Type a note..." className="flex-1 px-4 py-2.5 text-[13px] border border-slate-200 focus:border-violet-500 rounded-xl focus:ring-1 focus:ring-violet-500 focus:outline-none transition shadow-sm bg-white" />
+                                <button type="submit" disabled={!noteInput.trim()} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition disabled:opacity-50">Add</button>
+                            </form>
+                            
+                            <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-4">
+                                {notes.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-40 text-center opacity-70">
+                                        <div className="text-3xl mb-2">✏️</div>
+                                        <p className="text-sm font-medium text-slate-500">No notes yet</p>
+                                    </div>
+                                ) : notes.map((n, i) => (
+                                    <div key={i} className="bg-white p-4 text-[13px] text-slate-700 rounded-2xl border border-slate-100 shadow-[0_2px_4px_rgba(0,0,0,0.02)] leading-relaxed relative group">
+                                        <div className="absolute w-1 h-full bg-violet-400 left-0 top-0 rounded-l-2xl"></div>
+                                        <div className="pl-2">{n.text}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    )
+}
+
+ProductivityDashboard.jsx :- 
+
+import { useState, useEffect, useRef } from 'react'
+
+// ─── Pomodoro Timer ──────────────────────────────────────────────────────────
+function PomodoroTimer() {
+    const FOCUS_TIME = 25 * 60
+    const BREAK_TIME = 5 * 60
+
+    const [mode, setMode] = useState('focus') // 'focus' | 'break'
+    const [timeLeft, setTimeLeft] = useState(FOCUS_TIME)
+    const [isActive, setIsActive] = useState(false)
+    const [sessionsCompleted, setSessionsCompleted] = useState(0)
+    
+    // For local analytics
+    const [totalDeepWork, setTotalDeepWork] = useState(parseInt(localStorage.getItem('studymate_deepwork') || '0', 10))
+
+    useEffect(() => {
+        let interval = null
+        if (isActive && timeLeft > 0) {
+            interval = setInterval(() => {
+                setTimeLeft(time => time - 1)
+            }, 1000)
+        } else if (timeLeft === 0) {
+            // Timer complete
+            setIsActive(false)
+            if (mode === 'focus') {
+                const newTotal = totalDeepWork + 25
+                setTotalDeepWork(newTotal)
+                localStorage.setItem('studymate_deepwork', newTotal.toString())
+                setSessionsCompleted(s => s + 1)
+                setMode('break')
+                setTimeLeft(BREAK_TIME)
+                new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(()=>{}) // gentle chime
+                alert("Focus session complete! Time for a 5-minute break.")
+            } else {
+                setMode('focus')
+                setTimeLeft(FOCUS_TIME)
+                alert("Break is over! Time to focus.")
+            }
+        }
+        return () => clearInterval(interval)
+    }, [isActive, timeLeft, mode, totalDeepWork])
+
+    const toggleTimer = () => setIsActive(!isActive)
+    const resetTimer = () => {
+        setIsActive(false)
+        setTimeLeft(mode === 'focus' ? FOCUS_TIME : BREAK_TIME)
+    }
+
+    const mins = Math.floor(timeLeft / 60).toString().padStart(2, '0')
+    const secs = (timeLeft % 60).toString().padStart(2, '0')
+
+    const p = ((mode === 'focus' ? FOCUS_TIME : BREAK_TIME) - timeLeft) / (mode === 'focus' ? FOCUS_TIME : BREAK_TIME) * 100
+
+    return (
+        <div className="bg-white rounded-lg p-6 border border-slate-200 shadow-sm flex flex-col h-[600px] font-sans">
+            <h3 className="text-slate-900 font-semibold text-base mb-1">Session Timer</h3>
+            <p className="text-slate-500 text-xs mb-8">Maintain focus intervals for deep work</p>
+            
+            <div className="flex justify-center gap-2 mb-8">
+                <button onClick={() => { setMode('focus'); setIsActive(false); setTimeLeft(FOCUS_TIME) }}
+                    className={`px-5 py-1.5 rounded text-xs font-semibold tracking-wide transition-colors ${mode === 'focus' ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    Focus (25m)
+                </button>
+                <button onClick={() => { setMode('break'); setIsActive(false); setTimeLeft(BREAK_TIME) }}
+                    className={`px-5 py-1.5 rounded text-xs font-semibold tracking-wide transition-colors ${mode === 'break' ? 'bg-slate-400 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    Break (5m)
+                </button>
+            </div>
+
+            <div className="flex-1 flex flex-col items-center justify-center">
+                <div className="relative w-48 h-48 flex items-center justify-center mb-10">
+                    <svg className="w-full h-full absolute transform -rotate-90">
+                        <circle cx="96" cy="96" r="88" className="stroke-slate-100" strokeWidth="4" fill="none" />
+                        <circle cx="96" cy="96" r="88" className={`transition-all duration-1000 ease-linear ${mode === 'focus' ? 'stroke-slate-800' : 'stroke-slate-400'}`} 
+                            strokeWidth="4" fill="none" strokeLinecap="round"
+                            style={{ strokeDasharray: 2 * Math.PI * 88, strokeDashoffset: (2 * Math.PI * 88) * (1 - p / 100) }} />
+                    </svg>
+                    <div className="text-center z-10 flex flex-col items-center">
+                        <div className="text-5xl font-semibold text-slate-900 tracking-tighter tabular-nums">{mins}:{secs}</div>
+                        <div className="text-[10px] font-medium mt-1 tracking-widest text-slate-400 uppercase">{mode === 'focus' ? 'Focusing' : 'Resting'}</div>
+                    </div>
+                </div>
+
+                <div className="flex gap-3 w-full max-w-[240px]">
+                    <button onClick={toggleTimer} className={`flex-1 py-3 rounded text-white font-medium text-sm shadow-sm transition-colors ${isActive ? 'bg-slate-500 hover:bg-slate-600' : 'bg-slate-900 hover:bg-black'}`}>
+                        {isActive ? 'Pause' : 'Start Timer'}
+                    </button>
+                    <button onClick={resetTimer} className="w-12 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded transition flex items-center justify-center font-bold" aria-label="Reset Timer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6">
+                <div className="text-center">
+                    <p className="text-xl font-semibold text-slate-800 leading-none">{sessionsCompleted}</p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase tracking-widest mt-1.5">Sessions</p>
+                </div>
+                <div className="text-center">
+                    <p className="text-xl font-semibold text-slate-800 leading-none">{totalDeepWork}m</p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase tracking-widest mt-1.5">Total Focus</p>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// ─── Task Kanban Board ────────────────────────────────────────────────────────
+function KanbanBoard() {
+    const [tasks, setTasks] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('studymate_tasks') || '[]') } 
+        catch { return [] }
+    })
+    const [newTask, setNewTask] = useState('')
+
+    useEffect(() => {
+        localStorage.setItem('studymate_tasks', JSON.stringify(tasks))
+    }, [tasks])
+
+    const addTask = (e) => {
+        e.preventDefault()
+        if (!newTask.trim()) return
+        setTasks(prev => [...prev, { id: Date.now().toString(), text: newTask.trim(), status: 'todo' }])
+        setNewTask('')
+    }
+
+    const moveTask = (id, newStatus) => {
+        setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t))
+    }
+
+    const deleteTask = (id) => {
+        setTasks(prev => prev.filter(t => t.id !== id))
+    }
+
+    const columns = [
+        { id: 'todo', title: 'To Do', color: 'bg-slate-50' },
+        { id: 'progress', title: 'In Progress', color: 'bg-slate-50' },
+        { id: 'done', title: 'Completed', color: 'bg-slate-50' }
+    ]
+
+    return (
+        <div className="bg-white rounded-lg p-6 border border-slate-200 shadow-sm col-span-2 flex flex-col h-[600px]">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+                <div>
+                    <h3 className="text-slate-900 font-semibold text-base mb-1">Task Management</h3>
+                    <p className="text-slate-500 text-xs">Organize and track your active coursework</p>
+                </div>
+                <form onSubmit={addTask} className="flex gap-2 w-80">
+                    <input type="text" value={newTask} onChange={e => setNewTask(e.target.value)}
+                        placeholder="Log a new task..." className="flex-1 bg-white border border-slate-200 rounded px-3 py-2 text-sm focus:outline-none focus:border-slate-800 transition-colors" />
+                    <button type="submit" disabled={!newTask.trim()} className="bg-slate-900 hover:bg-black disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium transition-colors">Add</button>
+                </form>
+            </div>
+
+            <div className="flex-1 grid grid-cols-3 gap-5 min-h-0">
+                {columns.map(col => (
+                    <div key={col.id} className={`${col.color} border border-slate-200 rounded p-4 flex flex-col h-full`}>
+                        <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-2">
+                            <h4 className="text-slate-700 font-semibold text-xs tracking-wider uppercase">{col.title}</h4>
+                            <span className="bg-white px-2 py-0.5 rounded text-[10px] font-semibold text-slate-500 border border-slate-200">{tasks.filter(t => t.status === col.id).length}</span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto space-y-2.5 pb-2 pr-1">
+                            {tasks.filter(t => t.status === col.id).map(t => (
+                                <div key={t.id} className="bg-white p-3.5 rounded border border-slate-200 shadow-sm hover:border-slate-300 transition-colors group flex flex-col">
+                                    <p className={`text-sm font-medium mb-4 leading-snug ${col.id === 'done' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.text}</p>
+                                    <div className="flex justify-between items-center mt-auto">
+                                        <button onClick={() => deleteTask(t.id)} className="text-slate-400 hover:text-slate-700 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Remove</button>
+                                        <div className="flex gap-1 ml-auto">
+                                            {col.id !== 'todo' && <button onClick={() => moveTask(t.id, col.id === 'done' ? 'progress' : 'todo')} className="w-7 h-7 rounded bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center font-bold text-xs border border-slate-200 transition-colors" aria-label="Move left">←</button>}
+                                            {col.id !== 'done' && <button onClick={() => moveTask(t.id, col.id === 'todo' ? 'progress' : 'done')} className="w-7 h-7 rounded bg-white hover:bg-slate-50 text-slate-600 flex items-center justify-center font-bold text-xs border border-slate-200 transition-colors" aria-label="Move right">→</button>}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            {tasks.filter(t => t.status === col.id).length === 0 && (
+                                <div className="h-20 border border-dashed border-slate-200 rounded flex items-center justify-center text-slate-400 text-xs">
+                                    No tasks here
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
+
+// ─── Main Productivity Dashboard ──────────────────────────────────────────────
+export default function ProductivityDashboard() {
+    return (
+        <div className="animate-fade-in max-w-6xl mx-auto pb-8 font-sans">
+            <div className="mb-8">
+                <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Productivity</h2>
+                <p className="text-slate-500 text-sm mt-1">Manage your tasks and track focused sessions gracefully.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                {/* 1 Column for Pomodoro */}
+                <PomodoroTimer />
+                
+                {/* 2 Columns for Kanban */}
+                <KanbanBoard />
+            </div>
+        </div>
+    )
+}
+
+
+
+
+ProtectedRoute.jsx :- 
+
+import { useEffect, useState } from 'react'
+import { Navigate } from 'react-router-dom'
+import { getCurrentUser } from 'aws-amplify/auth'
+
+export default function ProtectedRoute({ children }) {
+    const [status, setStatus] = useState('checking')
+
+    useEffect(() => {
+        getCurrentUser()
+            .then(() => setStatus('auth'))
+            .catch(() => setStatus('unauth'))
+    }, [])
+
+    if (status === 'checking') {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            </div>
+        )
+    }
+
+    if (status === 'unauth') {
+        return <Navigate to="/login" replace />
+    }
+
+    return children
+}
+
+QuizModal.jsx :- 
+import { useState } from 'react'
+import { saveQuizScore } from '../hooks/useStudyTracker'
+
+export default function QuizModal({ questions, fileName, subjectName, onClose }) {
+  const [current, setCurrent] = useState(0)
+  const [selected, setSelected] = useState(null)
+  const [answers, setAnswers] = useState([])
+  const [showResult, setShowResult] = useState(false)
+  const [confirmed, setConfirmed] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const question = questions[current]
+  const totalQuestions = questions.length
+  const score = answers.filter(a => a.correct).length
+
+  const handleSelect = (i) => { if (!confirmed) setSelected(i) }
+
+  const handleConfirm = () => {
+    if (selected === null) return
+    const isCorrect = selected === question.answer
+    setAnswers(prev => [...prev, { selected, correct: isCorrect }])
+    setConfirmed(true)
+  }
+
+  const handleNext = () => {
+    if (current + 1 >= totalQuestions) {
+      setShowResult(true)
+      // FIX: build finalAnswers synchronously — React state (answers) hasn't
+      // flushed the last answer yet when this runs, so score was always off-by-one
+      if (!saved) {
+        const lastAnswer = { selected, correct: selected === question.answer }
+        const finalAnswers = [...answers, lastAnswer]
+        const finalScore = finalAnswers.filter(a => a.correct).length
+        saveQuizScore({
+          subjectName,
+          fileName,
+          score: finalScore,
+          total: totalQuestions,
+          questions,
+          answers: finalAnswers,
+        })
+        setSaved(true)
+      }
+    } else {
+      setCurrent(p => p + 1)
+      setSelected(null)
+      setConfirmed(false)
+    }
+  }
+
+  const handleRestart = () => {
+    setCurrent(0); setSelected(null); setAnswers([])
+    setShowResult(false); setConfirmed(false); setSaved(false)
+  }
+
+  const pct = totalQuestions ? Math.round((score / totalQuestions) * 100) : 0
+  const scoreColor = pct >= 80 ? 'text-green-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400'
+  const scoreMsg = pct === 100 ? '🏆 Perfect Score! Outstanding!'
+    : pct >= 80 ? '🎉 Excellent! Keep it up!'
+      : pct >= 60 ? '👍 Good job! Review the missed ones.'
+        : pct >= 40 ? '📚 Keep studying, you will get there!'
+          : "💪 Don't give up! Try again."
+  const quizTitle = subjectName ? `${subjectName} Quiz` : 'Quiz'
+
+  // ── Export quiz results as CSV ──────────────────────────────────────────────
+  const exportCSV = () => {
+    const rows = [
+      ['#', 'Question', 'Your Answer', 'Correct Answer', 'Result'],
+      ...questions.map((q, i) => [
+        i + 1,
+        `"${q.question.replace(/"/g, '""')}"`,
+        `"${q.options[answers[i]?.selected] || ''}"`,
+        `"${q.options[q.answer]}"`,
+        answers[i]?.correct ? 'Correct' : 'Wrong',
+      ])
+    ]
+    const csv = rows.map(r => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = Object.assign(document.createElement('a'), {
+      href: url, download: `${subjectName}_quiz_results.csv`
+    })
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+      <div className="bg-[#1a1a1a] rounded-2xl w-full max-w-2xl border border-white/10 shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="bg-gradient-to-r from-purple-700 to-purple-900 px-6 py-4 flex items-center justify-between">
+          <div className="min-w-0 flex-1 pr-4">
+            <h2 className="text-white font-bold text-lg">🧠 {quizTitle}</h2>
+            <p className="text-purple-200 text-xs truncate">{fileName}</p>
+          </div>
+          <button onClick={onClose}
+            className="text-white/60 hover:text-white text-2xl leading-none transition-colors shrink-0">×</button>
+        </div>
+
+        {/* ── Result Screen ── */}
+        {showResult ? (
+          <div className="p-8 text-center">
+            <div className="text-6xl mb-4">
+              {score === totalQuestions ? '🏆' : score >= totalQuestions / 2 ? '🎉' : '📚'}
+            </div>
+            <h3 className="text-white text-2xl font-bold mb-2">Quiz Complete!</h3>
+            <p className="text-gray-400 mb-6">{scoreMsg}</p>
+
+            <div className={`text-6xl font-bold mb-2 ${scoreColor}`}>{score}/{totalQuestions}</div>
+            <p className="text-gray-400 text-sm mb-2">{pct}% correct</p>
+            <p className="text-purple-400 text-xs mb-8">✅ Score saved to your analytics</p>
+
+            {/* Answer review */}
+            <div className="text-left space-y-3 mb-8 max-h-56 overflow-y-auto pr-1">
+              {questions.map((q, i) => (
+                <div key={i} className={`rounded-xl p-3 border ${answers[i]?.correct ? 'bg-green-900/20 border-green-500/30' : 'bg-red-900/20 border-red-500/30'}`}>
+                  <p className="text-white text-sm font-medium mb-1">
+                    {answers[i]?.correct ? '✅' : '❌'} Q{i + 1}: {q.question}
+                  </p>
+                  {!answers[i]?.correct && (
+                    <p className="text-green-400 text-xs">Correct: {q.options[q.answer]}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 justify-center flex-wrap">
+              <button onClick={handleRestart}
+                className="bg-purple-600 hover:bg-purple-500 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors">
+                🔄 Try Again
+              </button>
+              <button onClick={exportCSV}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors">
+                ⬇️ Export CSV
+              </button>
+              <button onClick={onClose}
+                className="bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-2.5 rounded-xl transition-colors">
+                Close
+              </button>
+            </div>
+          </div>
+
+        ) : (
+          /* ── Question Screen ── */
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-400 text-xs">Question {current + 1} of {totalQuestions}</span>
+              <span className="text-purple-400 text-xs font-medium">
+                Score: {answers.filter(a => a.correct).length}/{answers.length}
+              </span>
+            </div>
+            <div className="w-full bg-white/10 rounded-full h-1.5 mb-6">
+              <div className="bg-purple-500 h-1.5 rounded-full transition-all duration-500"
+                style={{ width: `${((current + (confirmed ? 1 : 0)) / totalQuestions) * 100}%` }} />
+            </div>
+
+            <h3 className="text-white font-semibold text-lg mb-6 leading-relaxed">{question.question}</h3>
+
+            <div className="space-y-3 mb-6">
+              {question.options.map((option, index) => {
+                let style = 'bg-white/5 border-white/10 text-white hover:bg-white/10 cursor-pointer'
+                if (confirmed) {
+                  if (index === question.answer)
+                    style = 'bg-green-900/40 border-green-500 text-green-300 cursor-default'
+                  else if (index === selected && selected !== question.answer)
+                    style = 'bg-red-900/40 border-red-500 text-red-300 cursor-default'
+                  else
+                    style = 'bg-white/5 border-white/5 text-white/40 cursor-default'
+                } else if (selected === index)
+                  style = 'bg-purple-600/40 border-purple-500 text-white cursor-pointer'
+
+                return (
+                  <button key={index} onClick={() => handleSelect(index)}
+                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all duration-200 text-sm ${style}`}>
+                    <span className="font-bold mr-2 text-white/50">{['A', 'B', 'C', 'D'][index]}.</span>
+                    {option}
+                  </button>
+                )
+              })}
+            </div>
+
+            {!confirmed ? (
+              <button onClick={handleConfirm} disabled={selected === null}
+                className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40
+                  disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors">
+                Confirm Answer
+              </button>
+            ) : (
+              <button onClick={handleNext}
+                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold py-3 rounded-xl transition-colors">
+                {current + 1 >= totalQuestions ? 'See Results 🎯' : 'Next Question →'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+
+UploadButton.jsx :- 
+import { useState, useRef } from 'react'
+import { uploadData } from 'aws-amplify/storage'
+import { getCurrentUser } from 'aws-amplify/auth'
+
+export default function UploadButton({ subjectName, onUploadComplete }) {
+  const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const inputRef = useRef()
+
+  const handleClick = () => inputRef.current.click()
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      // No alert — silently ignore non-PDFs (user already sees accept="application/pdf")
+      return
+    }
+    try {
+      setUploading(true)
+      const user = await getCurrentUser()
+      const path = `private/${user.userId}/${subjectName}/${file.name}`
+      await uploadData({
+        path,
+        data: file,
+        options: {
+          contentType: 'application/pdf',
+          onProgress: ({ transferredBytes, totalBytes }) => {
+            if (totalBytes) setProgress(Math.round((transferredBytes / totalBytes) * 100))
+          },
+        },
+      }).result
+      onUploadComplete?.()
+      e.target.value = ''
+    } catch (err) {
+      console.error('Upload failed:', err)
+    } finally {
+      setUploading(false)
+      setProgress(0)
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf"
+        className="hidden"
+        onChange={handleFileChange}
+        disabled={uploading}
+      />
+      <button
+        onClick={handleClick}
+        disabled={uploading}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold
+          transition-all border shrink-0
+          ${uploading
+            ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 shadow-sm hover:shadow'
+          }`}
+      >
+        {uploading ? (
+          <>
+            <div className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin shrink-0" />
+            <span>{progress}%</span>
+          </>
+        ) : (
+          <>
+            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+                d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4" />
+            </svg>
+            Upload PDF
+          </>
+        )}
+      </button>
+    </>
+  )
+}
+
+
