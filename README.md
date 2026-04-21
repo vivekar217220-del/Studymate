@@ -70,34 +70,64 @@ Stack: Express 5, AWS SDK v3, Axios, dotenv, CORS
 ⚛️ Frontend (/studymate)
 Stack: Vite + React + Tailwind CSS + AWS Amplify v6
 src/
-├── aws/config.js          # Amplify + Cognito + S3 config
+
+├── aws/config.js   
+# Amplify + Cognito + S3 config
+
 ├── pages/
+
 │   ├── Landing.jsx
+
 │   ├── Signup.jsx
+
 │   ├── VerifyOTP.jsx
+
 │   ├── Login.jsx
+
 │   └── Dashboard.jsx      # Main app shell with tab navigation
+
 ├── components/
+
 │   ├── UploadButton.jsx
+
 │   ├── FileList.jsx        # PDF list + AI actions per file
+
 │   ├── PDFViewer.jsx       # In-app viewer with Chat, Quiz, Notes sidebar
+
 │   ├── GlobalChatPanel.jsx # Cross-subject AI chat
+
 │   ├── AnalyticsDashboard.jsx
+
 │   ├── ProductivityDashboard.jsx
+
 │   ├── QuizModal.jsx
+
 │   ├── ProtectedRoute.jsx
+
 │   └── ErrorBoundary.jsx
+
 ├── hooks/
+
 │   ├── useStudyTracker.js  # Streak, sessions, quiz scores
+
 │   ├── useCloudSync.js     # S3-backed localStorage sync
+
 │   ├── useNotes.js
+
 │   ├── useChatManager.jsx
+
 │   ├── usePersonalization.js
+
 │   └── useRecommendations.js
+
 └── utils/
+
     ├── groqClient.js       # Groq API wrapper
+    
     ├── pdfTextExtractor.js # pdf.js text extraction
+    
     ├── Quizgenerator.js
+    
     └── summarize.js
 
 🔑 Environment Variables
