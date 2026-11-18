@@ -1,181 +1,57 @@
-📚 StudyMate — AI Student OS
+# StudyMate
 
-An intelligent, cloud-native study platform that transforms the way students learn — upload PDFs, get AI summaries, auto-generate quizzes, track progress, and chat with a subject-aware AI tutor.
+StudyMate is a web application prototype for studying from course PDFs. It organizes documents by subject, helps students turn reading material into summaries and quizzes, and tracks study activity in the same workspace.
 
+## What a student can do
 
-🎯 Purpose
-StudyMate is built for students who want more than just file storage. The goal is a complete study operating system — one place to upload your notes, understand them faster with AI, test your knowledge, and track how you're actually improving over time.
+| Area | Workflow |
+| --- | --- |
+| Account | Sign up, confirm an email verification code, and sign in through Amazon Cognito. |
+| Subject library | Upload PDFs to a subject, browse the file list, open the viewer, or remove a file. |
+| Document study | Extract PDF text and request a summary or multiple-choice quiz. Ask a question using text drawn from a document as context. |
+| Review | Check quiz history, study streaks, time by subject, and questions that are frequently missed. |
+| Organization | Add document notes, run a Pomodoro session, and manage tasks on a Kanban board. |
 
-🏗️ What We Built
-Authentication & Security
+## Architecture
 
-AWS Cognito — full sign-up, OTP email verification, and sign-in flow
-Protected Routes — unauthenticated users are redirected to login
-Identity Pool — scoped, per-user private storage in S3
+```text
+Student
+  -> React and Tailwind interface
+       -> Cognito for account flows
+       -> Amplify Storage and S3 for PDFs and app-state snapshots
+       -> PDF text extraction for document context
+       -> Express AI handlers -> Groq
+       -> Browser storage for study activity and notes
 
-File Management
+Express data handlers -> DynamoDB for profiles, app state, and quiz scores
+```
 
-AWS S3 (via AWS Amplify Storage) — PDFs stored under private/{userId}/{subjectName}/
-Upload with live progress, file listing, secure pre-signed URL sharing, and deletion
-In-app PDF Viewer with iframe rendering
+The authentication snapshots show the sign-up, verification, and sign-in screens. The upload and file-list components use Amplify Storage to store and retrieve files by subject. For document-assisted tasks, the frontend extracts text from a PDF and supplies the relevant content to the AI request. The Express snapshots show handlers for chat, summarization, quiz generation, and DynamoDB-backed data operations.
 
-AI Features (Groq API — llama-3.1-8b-instant)
+Study activity also has a local path. The tracking hooks record sessions and scores in browser storage, and a separate cloud-sync hook shows how selected app state can be backed up to S3. The browser and backend persistence paths are both represented in the repository.
 
-AI Summary — extracts key concepts and bullet-point summaries from any uploaded PDF
-Quiz Generator — auto-generates 10 MCQ questions directly from document content
-PDF Chat — ask anything about a specific document; AI cites which file it's drawing from
-Global Chat Panel — subject-aware AI tutor that indexes all your uploaded PDFs across subjects
-All AI calls go through the Express backend (/api/ai/*) which proxies to Groq securely
+## Source guide
 
-Study Analytics
+| Snapshot | What to look for |
+| --- | --- |
+| [Project setup](<Project setup + Vite + React + Tailwind>) and [Tailwind configuration](<setup Tailwind CSS and postcss configuration>) | Frontend tooling and styling setup |
+| [Landing page and routing](<Landing page + routing setup>) | Public entry point and route structure |
+| [Amplify and signup](<AWS Amplify + Cognito config + Signup page>), [email verification](<OTP verification page>), and [sign-in](<Login page + signIn flow>) | Cognito account workflow |
+| [Components](Components) | PDF upload and viewer, document actions, dashboard analytics, and quiz UI |
+| [AI utilities](AI_Utilization) | PDF text extraction and request helpers |
+| [Assistant and state hooks](Assistant_Interference) | Context-aware chat, document notes, state sync, and study tracking |
+| [Backend](backend) | Express handlers, Groq integration, and DynamoDB data handlers |
 
-Study Streak tracker with longest streak record
-Session Timer — auto-records time spent per subject
-Quiz Score History — saved locally, with per-subject performance breakdowns
-Weak Topics Engine — surfaces frequently missed questions for spaced repetition
-7-Day Activity Chart — bar chart of daily study minutes
-Revision Plan — suggests when to revisit weak topics (1 / 3 / 7 day intervals)
-AI Recommendations — surfaces low-performing subjects automatically
+## Integration and verification
 
-Productivity Tools
+This repository contains source snapshots of the application. To assemble a runnable environment, place the snapshots into a conventional React and Express project structure, add dependency manifests, and configure your own AWS and AI service resources. Keep credentials in the runtime environment.
 
-Pomodoro Timer — 25-minute focus / 5-minute break cycles with progress ring
-Kanban Board — To Do / In Progress / Done task management, persisted in localStorage
+For an integrated build, verify the workflow in this order:
 
-Cloud Sync
+1. Create a test account, confirm the verification code, and sign in.
+2. Upload a small text-based PDF to a test subject and open it in the viewer.
+3. Request a summary and quiz, then compare them with the source PDF for relevance.
+4. Complete the quiz and check that the result appears in study history.
+5. Verify how your deployment restores state after a new session and handles missing document text or service failures.
 
-useCloudSync hook syncs all studymate_* localStorage keys to S3 (app_state.json) every 10 seconds and on tab close — restores state on login
-
-Notes
-
-Per-PDF sticky notes, saved to localStorage, surfaced in the PDF Viewer sidebar
-
-
-☁️ AWS Services Used
-ServiceRoleCognito User PoolUser sign-up, OTP verification, sign-inCognito Identity PoolScoped IAM credentials for S3 accessS3PDF storage, custom subjects JSON, app state syncDynamoDBUser profiles, quiz score history, app state (backend)
-
-🖥️ Backend (/backend)
-Node.js + Express server that acts as a secure proxy:
-
-POST /api/ai/chat — proxies chat messages to Groq
-POST /api/ai/quiz — generates quiz JSON from text via Groq
-POST /api/ai/summarize — summarizes text via Groq
-GET /api/users/:userId/profile — fetches user profile from DynamoDB
-POST /api/users/:userId/sync — syncs app state to DynamoDB
-POST /api/users/:userId/scores — saves a quiz score to DynamoDB
-GET /api/users/:userId/scores — fetches all quiz scores from DynamoDB
-
-Stack: Express 5, AWS SDK v3, Axios, dotenv, CORS
-
-⚛️ Frontend (/studymate)
-Stack: Vite + React + Tailwind CSS + AWS Amplify v6
-src/
-
-├── aws/config.js   
-# Amplify + Cognito + S3 config
-
-├── pages/
-
-│   ├── Landing.jsx
-
-│   ├── Signup.jsx
-
-│   ├── VerifyOTP.jsx
-
-│   ├── Login.jsx
-
-│   └── Dashboard.jsx      # Main app shell with tab navigation
-
-├── components/
-
-│   ├── UploadButton.jsx
-
-│   ├── FileList.jsx        # PDF list + AI actions per file
-
-│   ├── PDFViewer.jsx       # In-app viewer with Chat, Quiz, Notes sidebar
-
-│   ├── GlobalChatPanel.jsx # Cross-subject AI chat
-
-│   ├── AnalyticsDashboard.jsx
-
-│   ├── ProductivityDashboard.jsx
-
-│   ├── QuizModal.jsx
-
-│   ├── ProtectedRoute.jsx
-
-│   └── ErrorBoundary.jsx
-
-├── hooks/
-
-│   ├── useStudyTracker.js  # Streak, sessions, quiz scores
-
-│   ├── useCloudSync.js     # S3-backed localStorage sync
-
-│   ├── useNotes.js
-
-│   ├── useChatManager.jsx
-
-│   ├── usePersonalization.js
-
-│   └── useRecommendations.js
-
-└── utils/
-
-    ├── groqClient.js       # Groq API wrapper
-    
-    ├── pdfTextExtractor.js # pdf.js text extraction
-    
-    ├── Quizgenerator.js
-    
-    └── summarize.js
-
-🔑 Environment Variables
-Backend .env
-
-GROQ_API_KEY=...
-
-PORT=5000
-
-AWS_REGION=ap-south-1
-
-AWS_ACCESS_KEY_ID=...
-
-AWS_SECRET_ACCESS_KEY=...
-
-Frontend .env
-
-VITE_USER_POOL_ID=...
-
-VITE_USER_POOL_CLIENT_ID=...
-
-VITE_IDENTITY_POOL_ID=...
-
-VITE_S3_BUCKET=...
-
-VITE_S3_REGION=...
-
-VITE_GROQ_API_KEY=...
-
-🚀 Running Locally
-bash# Backend
-cd backend
-npm install
-npm run dev
-
-# Frontend
-cd studymate
-npm install
-npm run dev
-
-✅ Core User Flow
-
-Sign Up → OTP email verification via Cognito
-Login → Dashboard loads with cloud-synced state
-Upload PDFs → stored privately in S3 per subject
-Summarize / Quiz / Chat → AI processes your actual documents
-Track progress → streaks, session time, quiz scores, weak topics
-Stay productive → Pomodoro timer + Kanban board
-
-
-Built with React, Vite, Tailwind CSS, AWS Amplify, Cognito, S3, DynamoDB, Express, and Groq AI.
+Document-based answers depend on the quality of the extracted text. A scanned PDF may need text recognition before it provides useful context. Use sample documents when testing AI requests, since document text is sent for processing.
